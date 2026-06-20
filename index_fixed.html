@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tracker Database Mobile Friendly</title>
+<style>
+body{font-family:Arial,sans-serif;background:#102334;color:white;margin:0;padding:10px}
+.container{width:100%;max-width:1100px;margin:auto}
+.card{background:#1a3148;padding:15px;border-radius:12px;margin-bottom:20px}
+input{width:100%;padding:8px;border:none;border-radius:6px;box-sizing:border-box}
+label{display:block;margin-top:10px;margin-bottom:5px}
+button{padding:10px 15px;border:none;border-radius:6px;cursor:pointer;margin-right:5px;margin-bottom:10px}
+.track-btn{background:#28a745;color:white}
+.clear-btn{background:#dc3545;color:white}
+.submit-btn{background:#007bff;color:white}
+.backup-btn{background:#6f42c1;color:white}
+.table-container{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;min-width:900px;border-collapse:collapse;background:white;color:black}
+th,td{padding:10px;border:1px solid #ddd;text-align:left;white-space:nowrap}
+th{background:#e9ecef}
+.duplicate{background:#ff0000;color:white}
+video{width:100%;border-radius:10px;background:black;margin-bottom:10px}
+
+#preview{max-width:200px;border-radius:10px;margin-bottom:15px;display:none}
+.image-modal{
+ display:none;
+ position:fixed;
+ top:0;
+ left:0;
+ width:100%;
+ height:100%;
+ background:rgba(0,0,0,0.9);
+ z-index:9999;
+ justify-content:center;
+ align-items:center;
+}
+.image-modal img{
+ max-width:95%;
+ max-height:95%;
+ object-fit:contain;
+}
+.clickable-photo{
+ cursor:pointer;
+}
+@media(max-width:768px){
+
+ body{padding:8px}
+ .card{padding:12px}
+ button{width:100%;margin-right:0}
+ #pendingTable input{min-width:100px;font-size:14px;padding:6px}
+ td img{width:60px}
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="card">
+<h1>Tracker</h1>
+
+<label>Name</label><input type="text" id="name">
+<label>Route Code</label><input type="text" id="routeCode">
+<label>Cart</label><input type="text" id="cart">
+<label>Feedback</label><input type="text" id="feedback">
+
+<label>Camera</label>
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas" style="display:none;"></canvas>
+
+<div>
+<button type="button" onclick="startCamera()">Start Camera</button>
+<button type="button" onclick="capturePhoto()">Take Picture</button>
+</div>
+
+<img id="preview">
+
+<button class="track-btn" onclick="saveRecord()">Add To Pending</button>
+<button class="backup-btn" onclick="exportBackup()">Export Backup</button>
+<button class="backup-btn" onclick="document.getElementById('importFile').click()">Import Backup</button>
+<input type="file" id="importFile" accept=".json" style="display:none" onchange="importBackup(event)">
+<button class="clear-btn" onclick="clearAllData()">Clear Everything</button>
+</div>
+
+<div class="card"><h2>Export Status</h2><p id="exportStatus">No exports yet</p></div>
+
+<div class="card">
+<h2>Pending Records</h2>
+<button class="submit-btn" onclick="submitAll()">Submit All</button>
+<div class="table-container">
+<table>
+<thead>
+<tr>
+<th>Name</th><th>Route Code</th><th>Cart</th><th>Feedback</th><th>Photo</th><th>Date Added</th><th>Action</th>
+</tr>
+</thead>
+<tbody id="pendingTable"></tbody>
+</table>
+</div>
+</div>
+
+<div class="card">
+<h2>Database Records</h2>
+<div class="table-container">
+<table>
+<thead>
+<tr>
+<th>Name</th><th>Route Code</th><th>Cart</th><th>Feedback</th><th>Photo</th><th>Date Added</th>
+</tr>
+</thead>
+<tbody id="recordsTable"></tbody>
+</table>
+</div>
+</div>
+
+</div>
+
+
+<div id="imageModal" class="image-modal" onclick="closeImageModal()">
+  <img id="modalImage">
+</div>
+
+<script>
+
+let records = JSON.parse(localStorage.getItem("records")) || [];
+let pendingRecords = JSON.parse(localStorage.getItem("pendingRecords")) || [];
+let capturedPhoto = "";
+let stream = null;
+let lastExportTime = Number(localStorage.getItem("lastExportTime")) || 0;
+
+async function startCamera(){
+ try{
+   stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+   document.getElementById("video").srcObject = stream;
+ }catch(error){
+   alert("Camera access denied or unavailable.");
+ }
+}
+
+function stopCamera(){
+ if(stream){
+   stream.getTracks().forEach(track=>track.stop());
+   stream=null;
+ }
+}
+
+function capturePhoto(){
+ const video=document.getElementById("video");
+ if(video.videoWidth===0){
+   alert("Camera is still loading.");
+   return;
+ }
+
+ const canvas=document.getElementById("canvas");
+ const preview=document.getElementById("preview");
+
+ canvas.width=video.videoWidth;
+ canvas.height=video.videoHeight;
+
+ canvas.getContext("2d").drawImage(video,0,0,canvas.width,canvas.height);
+
+ capturedPhoto=canvas.toDataURL("image/jpeg",0.8);
+ preview.src=capturedPhoto;
+ preview.style.display="block";
+
+ stopCamera();
+}
+
+function saveRecord(){
+ const now=new Date();
+
+ pendingRecords.unshift({
+   id: Date.now(),
+   name:document.getElementById("name").value.trim(),
+   routeCode:document.getElementById("routeCode").value.trim(),
+   cart:document.getElementById("cart").value.trim(),
+   feedback:document.getElementById("feedback").value.trim(),
+   photo:capturedPhoto,
+   date:now.toLocaleDateString("en-GB")+" "+now.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})
+ });
+
+ localStorage.setItem("pendingRecords",JSON.stringify(pendingRecords));
+
+ document.getElementById("name").value="";
+ document.getElementById("routeCode").value="";
+ document.getElementById("cart").value="";
+ document.getElementById("feedback").value="";
+ document.getElementById("preview").src="";
+ document.getElementById("preview").style.display="none";
+
+ capturedPhoto="";
+ loadData();
+}
+
+function exportBackup(){
+ const data={databaseRecords:records,pendingRecords:pendingRecords};
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+ const a=document.createElement("a");
+ a.href=URL.createObjectURL(blob);
+ a.download="tracker_backup.json";
+ a.click();
+}
+
+function importBackup(event){
+ const file=event.target.files[0];
+ if(!file) return;
+
+ const reader=new FileReader();
+ reader.onload=function(e){
+   try{
+     const data=JSON.parse(e.target.result);
+     records=(data.databaseRecords||[]).map(r=>({id:r.id||Date.now()+Math.random(),...r}));
+     pendingRecords=(data.pendingRecords||[]).map(r=>({id:r.id||Date.now()+Math.random(),...r}));
+     localStorage.setItem("records",JSON.stringify(records));
+     localStorage.setItem("pendingRecords",JSON.stringify(pendingRecords));
+     loadData();
+     alert("Backup imported successfully");
+   }catch(err){
+     alert("Invalid backup file");
+   }
+ };
+ reader.readAsText(file);
+}
+
+function updatePending(index,field,value){
+ pendingRecords[index][field]=value;
+ localStorage.setItem("pendingRecords",JSON.stringify(pendingRecords));
+}
+
+function updatePendingPhoto(index, input){
+ const file = input.files[0];
+ if(!file) return;
+
+ const reader = new FileReader();
+
+ reader.onload = function(e){
+   pendingRecords[index].photo = e.target.result;
+   localStorage.setItem(
+     "pendingRecords",
+     JSON.stringify(pendingRecords)
+   );
+   loadPending();
+ };
+
+ reader.readAsDataURL(file);
+}
+
+
+function submitRecord(index){
+ records.unshift(pendingRecords[index]);
+ pendingRecords.splice(index,1);
+ localStorage.setItem("records",JSON.stringify(records));
+ localStorage.setItem("pendingRecords",JSON.stringify(pendingRecords));
+ loadData();
+}
+
+function submitAll(){
+ records=[...pendingRecords,...records];
+ pendingRecords=[];
+ localStorage.setItem("records",JSON.stringify(records));
+ localStorage.setItem("pendingRecords",JSON.stringify(pendingRecords));
+ loadData();
+}
+
+
+function openImageModal(src){
+ document.getElementById("modalImage").src = src;
+ document.getElementById("imageModal").style.display = "flex";
+}
+
+function closeImageModal(){
+ document.getElementById("imageModal").style.display = "none";
+}
+
+function clearAllData(){
+ if(!confirm("Delete ALL pending and database records?")) return;
+ records=[];
+ pendingRecords=[];
+ localStorage.removeItem("records");
+ localStorage.removeItem("pendingRecords");
+ loadData();
+}
+
+function loadPending(){
+ const table=document.getElementById("pendingTable");
+ table.innerHTML="";
+
+ pendingRecords.forEach((record,index)=>{
+   const row=document.createElement("tr");
+   row.innerHTML=`
+   <td><input value="${record.name||''}" onchange="updatePending(${index},'name',this.value)"></td>
+   <td><input value="${record.routeCode||''}" onchange="updatePending(${index},'routeCode',this.value)"></td>
+   <td><input value="${record.cart||''}" onchange="updatePending(${index},'cart',this.value)"></td>
+   <td><input value="${record.feedback||''}" onchange="updatePending(${index},'feedback',this.value)"></td>
+   <td>
+  ${record.photo ? '<img src="'+record.photo+'" width="80" class="clickable-photo" onclick="openImageModal(this.src)">' : 'No Photo'}
+</td>
+   <td>${record.date||''}</td>
+   <td><button class="submit-btn" onclick="submitRecord(${index})">Submit</button></td>`;
+   table.appendChild(row);
+ });
+}
+
+function loadDatabase(){
+ const table=document.getElementById("recordsTable");
+ table.innerHTML="";
+
+ const counts={};
+ records.forEach(r=>{
+   const key=(r.name||"").toLowerCase();
+   counts[key]=(counts[key]||0)+1;
+ });
+
+ records.forEach((record,index)=>{
+   const row=document.createElement("tr");
+
+   if(record.name && counts[record.name.toLowerCase()]>1){
+     row.classList.add("duplicate");
+   }
+
+   row.innerHTML=`
+   <td>${record.name||""}</td>
+   <td>${record.routeCode||""}</td>
+   <td>${record.cart||""}</td>
+   <td>${record.feedback||""}</td>
+   <td>
+  ${record.photo ? '<img src="'+record.photo+'" width="80" class="clickable-photo" onclick="openImageModal(this.src)">' : 'No Photo'}
+</td>
+   <td>${record.date||""}</td>`;
+
+   table.appendChild(row);
+ });
+}
+
+function loadData(){
+ loadPending();
+ loadDatabase();
+}
+
+loadData();
+</script>
+</body>
+</html>
